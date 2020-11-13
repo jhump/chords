@@ -12,18 +12,18 @@ import (
 // as ${PREFIX}SymType, of which a reference is passed to the lexer.
 %union{
 	ch    Chord
-	p     Pitch
-	t     Tone
+	n     Note
+	t     ChordTone
 	acc   Accidental
 	triad triad
-	tones []Tone
-	b     byte
+	tones []ChordTone
+	b     int8
 }
 
 // any non-terminal which returns a value needs a type, which is
 // really a field name in the above union struct
 %type <ch>    chord fullChord
-%type <p>     pitch
+%type <n>     note
 %type <t>     tone
 %type <acc>   toneMod
 %type <triad> triad sus
@@ -31,9 +31,9 @@ import (
 %type <b>     toneVal
 
 // same for terminals
-%token <b>     SYM_NOTE SYM_TONE SYM_MAJ7 SYM_SUS
-%token <acc>   SYM_ACCIDENTAL
-%token <triad> SYM_MIN SYM_DIM SYM_HDIM SYM_FDIM SYM_AUG
+%token <b>     _SYM_NOTE _SYM_TONE _SYM_MAJ7 _SYM_SUS
+%token <acc>   _SYM_ACCIDENTAL
+%token <triad> _SYM_MIN _SYM_DIM _SYM_HDIM _SYM_FDIM _SYM_AUG
 
 %%
 
@@ -42,7 +42,7 @@ fullChord	: chord
 			$$ = $1
 			chordlex.(*chordLex).res = &$$
 		}
-	| chord '/' pitch
+	| chord '/' note
 		{
 			$$ = $1
 			$$.Bass = $3
@@ -50,20 +50,20 @@ fullChord	: chord
 		}
 
 // numerous formulations to prevent any ambiguity between an accidental
-// adjusting the root pitch vs. the 7th
-chord	: pitch extras
+// adjusting the root note vs. the 7th
+chord	: note extras
 		{
 			$$ = Chord{ Root: $1, ExtraTones: $2 }
 		}
-	| pitch '7' extras
+	| note '7' extras
 		{
-			$$ = Chord{ Root: $1, ExtraTones: append($3, Tone{Val: 7}) }
+			$$ = Chord{ Root: $1, ExtraTones: append($3, ChordTone{Val: 7}) }
 		}
-	| pitch SYM_MAJ7 '7' extras
+	| note _SYM_MAJ7 '7' extras
 		{
-			$$ = Chord{ Root: $1, ExtraTones: append($4, Tone{Val: 7, Acc: SHARP}) }
+			$$ = Chord{ Root: $1, ExtraTones: append($4, ChordTone{Val: 7, Acc: Sharp}) }
 		}
-	| pitch triad extras
+	| note triad extras
 		{
 			if $2.susTone.Val != 0 {
 				$$ = Chord{ Root: $1, Triad: $2.typ, ExtraTones: append($3, $2.susTone) }
@@ -71,7 +71,7 @@ chord	: pitch extras
 				$$ = Chord{ Root: $1, Triad: $2.typ, ExtraTones: $3 }
 			}
 		}
-	| pitch SYM_MAJ7 extras
+	| note _SYM_MAJ7 extras
 		{
 			hasHighTone := false
 			for _, tn := range $3 {
@@ -81,101 +81,101 @@ chord	: pitch extras
 				}
 			}
 			if hasHighTone {
-				$$ = Chord{ Root: $1, ExtraTones: append($3, Tone{Val:7, Acc:SHARP}) }
+				$$ = Chord{ Root: $1, ExtraTones: append($3, ChordTone{Val: 7, Acc: Sharp}) }
 			} else {
 				$$ = Chord{ Root: $1, ExtraTones: $3 }
 			}
 		}
-	| pitch triad '7' extras
+	| note triad '7' extras
 		{
 			if $2.susTone.Val != 0 {
-				$$ = Chord{ Root: $1, Triad: $2.typ, ExtraTones: append($4, Tone{Val: 7}, $2.susTone) }
+				$$ = Chord{ Root: $1, Triad: $2.typ, ExtraTones: append($4, ChordTone{Val: 7}, $2.susTone) }
 			} else {
-				$$ = Chord{ Root: $1, Triad: $2.typ, ExtraTones: append($4, Tone{Val: 7}) }
+				$$ = Chord{ Root: $1, Triad: $2.typ, ExtraTones: append($4, ChordTone{Val: 7}) }
 			}
 		}
-	| pitch triad SYM_MAJ7 '7' extras
+	| note triad _SYM_MAJ7 '7' extras
 		{
 			if $2.susTone.Val != 0 {
-				$$ = Chord{ Root: $1, Triad: $2.typ, ExtraTones: append($5, Tone{Val: 7, Acc: SHARP}, $2.susTone) }
+				$$ = Chord{ Root: $1, Triad: $2.typ, ExtraTones: append($5, ChordTone{Val: 7, Acc: Sharp}, $2.susTone) }
 			} else {
-				$$ = Chord{ Root: $1, Triad: $2.typ, ExtraTones: append($5, Tone{Val: 7, Acc: SHARP}) }
+				$$ = Chord{ Root: $1, Triad: $2.typ, ExtraTones: append($5, ChordTone{Val: 7, Acc: Sharp}) }
 			}
 		}
-	| pitch triad SYM_MAJ7 SYM_TONE extras
+	| note triad _SYM_MAJ7 _SYM_TONE extras
 		{
 			if $2.susTone.Val != 0 {
-				$$ = Chord{ Root: $1, Triad: $2.typ, ExtraTones: append($5, Tone{Val: 7, Acc: SHARP}, Tone{Val: $4}, $2.susTone) }
+				$$ = Chord{ Root: $1, Triad: $2.typ, ExtraTones: append($5, ChordTone{Val: 7, Acc: Sharp}, ChordTone{Val: $4}, $2.susTone) }
 			} else {
-				$$ = Chord{ Root: $1, Triad: $2.typ, ExtraTones: append($5, Tone{Val: 7, Acc: SHARP}, Tone{Val: $4}) }
+				$$ = Chord{ Root: $1, Triad: $2.typ, ExtraTones: append($5, ChordTone{Val: 7, Acc: Sharp}, ChordTone{Val: $4}) }
 			}
 		}
-	| pitch triad SYM_ACCIDENTAL '7' extras
+	| note triad _SYM_ACCIDENTAL '7' extras
 		{
 			if $2.susTone.Val != 0 {
-				$$ = Chord{ Root: $1, Triad: $2.typ, ExtraTones: append($5, Tone{Val: 7, Acc: $3}, $2.susTone) }
+				$$ = Chord{ Root: $1, Triad: $2.typ, ExtraTones: append($5, ChordTone{Val: 7, Acc: $3}, $2.susTone) }
 			} else {
-				$$ = Chord{ Root: $1, Triad: $2.typ, ExtraTones: append($5, Tone{Val: 7, Acc: $3}) }
+				$$ = Chord{ Root: $1, Triad: $2.typ, ExtraTones: append($5, ChordTone{Val: 7, Acc: $3}) }
 			}
 		}
 
-pitch	: SYM_NOTE
+note	: _SYM_NOTE
 		{
-			$$ = Pitch{ N: Note($1) }
+			$$ = Note{ N: NoteName($1) }
 		}
-	| SYM_NOTE SYM_ACCIDENTAL
+	| _SYM_NOTE _SYM_ACCIDENTAL
 		{
-			$$ = Pitch{ N: Note($1), Acc: $2 }
+			$$ = Note{ N: NoteName($1), Acc: $2 }
 		}
 
-triad	: SYM_MIN
+triad	: _SYM_MIN
 		{
-			$$ = triad{ typ: MIN3 }
+			$$ = triad{ typ: Min3 }
 		}
 	| '-'
 		{
-			$$ = triad{ typ: MIN3 }
+			$$ = triad{ typ: Min3 }
 		}
-	| SYM_DIM
+	| _SYM_DIM
 		{
-			$$ = triad{ typ: DIM3 }
+			$$ = triad{ typ: Dim3 }
 		}
-	| SYM_HDIM
+	| _SYM_HDIM
 		{
-			$$ = triad{ typ: HDIM }
+			$$ = triad{ typ: HDim }
 		}
-	| SYM_FDIM
+	| _SYM_FDIM
 		{
-			$$ = triad{ typ: FDIM }
+			$$ = triad{ typ: FDim }
 		}
-	| SYM_AUG
+	| _SYM_AUG
 		{
-			$$ = triad{ typ: AUG3 }
+			$$ = triad{ typ: Aug3 }
 		}
 	| '+'
 		{
-			$$ = triad{ typ: AUG3 }
+			$$ = triad{ typ: Aug3 }
 		}
 	| sus
 		{
 			$$ = $1
 		}
 
-sus	: SYM_SUS '2'
+sus	: _SYM_SUS '2'
 		{
-			$$ = triad{ typ: SUS, susTone: Tone{ Val: 2 } }
+			$$ = triad{ typ: Sus, susTone: ChordTone{ Val: 2 } }
 		}
-	| SYM_SUS SYM_ACCIDENTAL '2'
+	| _SYM_SUS _SYM_ACCIDENTAL '2'
 		{
-			$$ = triad{ typ: SUS, susTone: Tone{ Val: 2, Acc: $2 } }
+			$$ = triad{ typ: Sus, susTone: ChordTone{ Val: 2, Acc: $2 } }
 		}
-	| SYM_SUS '4'
+	| _SYM_SUS '4'
 		{
-			$$ = triad{ typ: SUS, susTone: Tone{ Val: 4 } }
+			$$ = triad{ typ: Sus, susTone: ChordTone{ Val: 4 } }
 		}
-	| SYM_SUS SYM_ACCIDENTAL '4'
+	| _SYM_SUS _SYM_ACCIDENTAL '4'
 		{
-			$$ = triad{ typ: SUS, susTone: Tone{ Val: 4, Acc: $2 } }
+			$$ = triad{ typ: Sus, susTone: ChordTone{ Val: 4, Acc: $2 } }
 		}
 
 extras	: /* empty */
@@ -184,19 +184,19 @@ extras	: /* empty */
 		}
 	| tone extras
 		{
-			$$ = append([]Tone{$1}, $2...)
+			$$ = append([]ChordTone{$1}, $2...)
 		}
 
 tone	: toneVal
 		{
-			$$ = Tone{ Val: $1 }
+			$$ = ChordTone{ Val: $1 }
 		}
 	| toneMod toneVal
 		{
-			$$ = Tone{ Val: $2, Acc: $1 }
+			$$ = ChordTone{ Val: $2, Acc: $1 }
 		}
 
-toneVal	: SYM_TONE
+toneVal	: _SYM_TONE
 		{
 			$$ = $1
 		}
@@ -219,13 +219,13 @@ toneVal	: SYM_TONE
 
 toneMod	: '-'
 		{
-			$$ = FLAT
+			$$ = Flat
 		}
 	| '+'
 		{
-			$$ = SHARP
+			$$ = Sharp
 		}
-	| SYM_ACCIDENTAL
+	| _SYM_ACCIDENTAL
 		{
 			$$ = $1
 		}
@@ -279,76 +279,76 @@ func (l *chordLex) Lex(lval *chordSymType) int {
 	}
 
 	if c >= 'A' && c <= 'G' {
-		lval.b = byte(c)
-		return SYM_NOTE
+		lval.b = int8(c)
+		return _SYM_NOTE
 	} else {
 		switch (c) {
 		case 's':
 			if l.peek(0) == 'u' && l.peek(1) == 's' {
 				l.skip(2)
-				return SYM_SUS
+				return _SYM_SUS
 			}
 		case '#', '♯':
-			lval.acc = SHARP
-			return SYM_ACCIDENTAL
+			lval.acc = Sharp
+			return _SYM_ACCIDENTAL
 		case 'x', '𝄪':
-			lval.acc = DBL_SHARP
-			return SYM_ACCIDENTAL
+			lval.acc = DblSharp
+			return _SYM_ACCIDENTAL
 		case '♭':
-			lval.acc = FLAT
-			return SYM_ACCIDENTAL
+			lval.acc = Flat
+			return _SYM_ACCIDENTAL
 		case '𝄫':
-			lval.acc = DBL_FLAT
-			return SYM_ACCIDENTAL
+			lval.acc = DblFlat
+			return _SYM_ACCIDENTAL
 		case 'b':
 			if l.peek(0) == 'b' {
 				l.skip(1)
-				lval.acc = DBL_FLAT
-				return SYM_ACCIDENTAL
+				lval.acc = DblFlat
+				return _SYM_ACCIDENTAL
 			}
-			lval.acc = FLAT
-			return SYM_ACCIDENTAL
+			lval.acc = Flat
+			return _SYM_ACCIDENTAL
 		case 'n', '♮':
-			lval.acc = NATURAL
-			return SYM_ACCIDENTAL
+			lval.acc = Natural
+			return _SYM_ACCIDENTAL
 		case 'a':
 			if l.peek(0) == 'u' && l.peek(1) == 'g' {
 				l.skip(2)
-				return SYM_AUG
+				return _SYM_AUG
 			}
 		case 'm':
 			if l.peek(0) == 'a' && l.peek(1) == 'j' {
 				l.skip(2)
-				return SYM_MAJ7
+				return _SYM_MAJ7
 			} else if l.peek(0) == 'i' && l.peek(1) == 'n' {
 				l.skip(2)
-				return SYM_MIN
+				return _SYM_MIN
 			}
-			return SYM_MIN
+			return _SYM_MIN
 		case 'd':
 			if l.peek(0) == 'i' && l.peek(1) == 'm' {
 				l.skip(2)
-				return SYM_DIM
+				return _SYM_DIM
 			}
 		case 'ø':
-			return SYM_HDIM
+			return _SYM_HDIM
 		case 'o':
-			return SYM_FDIM
+			return _SYM_FDIM
 		case '△', '∆':
-			return SYM_MAJ7
+			return _SYM_MAJ7
 		case '1':
 			if l.peek(0) == '1' {
 				l.skip(1)
 				lval.b = 11
-				return SYM_TONE
+				return _SYM_TONE
 			} else if l.peek(0) == '3' {
 				l.skip(1)
 				lval.b = 13
-				return SYM_TONE
+				return _SYM_TONE
 			}
 		case '9':
-			lval.b = byte(c) - '0'
-			return SYM_TONE
+			lval.b = int8(c) - '0'
+			return _SYM_TONE
 		}
 	}
 	return int(c)
